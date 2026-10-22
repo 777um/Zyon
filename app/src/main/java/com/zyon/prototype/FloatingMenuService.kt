@@ -16,6 +16,7 @@ class FloatingMenuService : Service() {
     private lateinit var window: WindowManager
     private lateinit var root: LinearLayout
     private lateinit var body: LinearLayout
+    private var demoView: DemoOverlayView? = null
     private lateinit var params: WindowManager.LayoutParams
     private val preferences by lazy { getSharedPreferences("zyon", MODE_PRIVATE) }
     private val accent = Color.rgb(94, 226, 230)
@@ -41,7 +42,14 @@ class FloatingMenuService : Service() {
             setTextColor(accent)
             setPadding(6, 8, 6, 16)
         }
-        root.addView(header)
+        val headerRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        headerRow.addView(header, LinearLayout.LayoutParams(0, dp(48), 1f))
+        headerRow.addView(Button(this).apply {
+            text = "×"
+            contentDescription = "Fechar menu flutuante"
+            setOnClickListener { stopSelf() }
+        }, LinearLayout.LayoutParams(dp(52), dp(48)))
+        root.addView(headerRow)
         val tabs = LinearLayout(this)
         root.addView(tabs)
         body = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
@@ -82,7 +90,29 @@ class FloatingMenuService : Service() {
             }
         }
         window.addView(root, params)
+        if (preferences.getBoolean("demoOverlay", false)) setDemoOverlay(true)
         showTab("ESP")
+    }
+
+    private fun setDemoOverlay(enabled: Boolean) {
+        preferences.edit().putBoolean("demoOverlay", enabled).apply()
+        if (enabled && demoView == null) {
+            val view = DemoOverlayView(this)
+            val p = WindowManager.LayoutParams(
+                WindowManager.LayoutParams.MATCH_PARENT,
+                WindowManager.LayoutParams.MATCH_PARENT,
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                    WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                PixelFormat.TRANSLUCENT
+            )
+            window.addView(view, p)
+            demoView = view
+        } else if (!enabled) {
+            demoView?.let { window.removeView(it) }
+            demoView = null
+        }
     }
 
     private fun title(label: String) {
@@ -139,10 +169,23 @@ class FloatingMenuService : Service() {
                 slider("range", "Alcance (m)", 10, 300, 100)
             }
             "Aim" -> {
-                title("Parâmetros de simulação")
-                slider("fov", "FOV", 20, 300, 110)
-                slider("smooth", "Suavização", 1, 100, 65)
-                slider("deadzone", "Deadzone", 0, 50, 8)
+                title("Simulação de mira — não controla jogos")
+                body.addView(Switch(this).apply {
+                    text = "Ativar simulação de Aim"
+                    textSize = 13f
+                    setTextColor(Color.WHITE)
+                    isChecked = preferences.getBoolean("aimEnabled", false)
+                    setOnCheckedChangeListener { _, enabled ->
+                        preferences.edit().putBoolean("aimEnabled", enabled).apply()
+                        demoView?.invalidate()
+                        showTab("Aim")
+                    }
+                })
+                if (preferences.getBoolean("aimEnabled", false)) {
+                    slider("fov", "FOV", 20, 300, 110)
+                    slider("smooth", "Suavização", 1, 100, 65)
+                    slider("deadzone", "Deadzone", 0, 50, 8)
+                }
             }
             "Loot" -> {
                 title("Classificação de itens simulados")
@@ -151,6 +194,14 @@ class FloatingMenuService : Service() {
                 slider("minLoot", "Valor mínimo (mil)", 0, 500, 50)
             }
             "Visual" -> {
+                title("Teste visual sobre outros aplicativos")
+                body.addView(Switch(this).apply {
+                    text = "Exibir overlay DEMO"
+                    textSize = 13f
+                    setTextColor(Color.WHITE)
+                    isChecked = preferences.getBoolean("demoOverlay", false)
+                    setOnCheckedChangeListener { _, enabled -> setDemoOverlay(enabled) }
+                })
                 slider("opacity", "Opacidade (%)", 30, 100, 93)
                 toggle("fps", "Indicador de FPS")
             }
@@ -168,6 +219,8 @@ class FloatingMenuService : Service() {
     }
 
     override fun onDestroy() {
+        demoView?.let { window.removeView(it) }
+        demoView = null
         if (::root.isInitialized) window.removeView(root)
         super.onDestroy()
     }
