@@ -195,6 +195,8 @@ class FloatingMenuService : Service() {
             }
             "Visual" -> {
                 title("Teste visual sobre outros aplicativos")
+                title(if (preferences.getBoolean("captureActive", false)) "Captura: ativa • ${preferences.getInt("captureFps", 0)} FPS" else "Captura: desligada")
+                title("Dados capturados: somente contagem de quadros")
                 body.addView(Switch(this).apply {
                     text = "Exibir overlay DEMO"
                     textSize = 13f
