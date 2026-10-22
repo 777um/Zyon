@@ -41,7 +41,15 @@ class FloatingMenuService : Service() {
             setTextColor(accent)
             setPadding(6, 8, 6, 16)
         }
-        root.addView(header)
+        val headerRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        headerRow.addView(header, LinearLayout.LayoutParams(0, dp(48), 1f))
+        headerRow.addView(Button(this).apply {
+            text = "×"
+            contentDescription = "Fechar menu flutuante"
+            textSize = 20f
+            setOnClickListener { stopSelf() }
+        }, LinearLayout.LayoutParams(dp(52), dp(48)))
+        root.addView(headerRow)
         val tabs = LinearLayout(this)
         root.addView(tabs)
         body = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
@@ -139,10 +147,24 @@ class FloatingMenuService : Service() {
                 slider("range", "Alcance (m)", 10, 300, 100)
             }
             "Aim" -> {
-                title("Parâmetros de simulação")
-                slider("fov", "FOV", 20, 300, 110)
-                slider("smooth", "Suavização", 1, 100, 65)
-                slider("deadzone", "Deadzone", 0, 50, 8)
+                title("Simulação de mira — não controla jogos")
+                body.addView(Switch(this).apply {
+                    text = "Ativar simulação de Aim"
+                    textSize = 13f
+                    setTextColor(Color.WHITE)
+                    isChecked = preferences.getBoolean("aimEnabled", false)
+                    setOnCheckedChangeListener { _, enabled ->
+                        preferences.edit().putBoolean("aimEnabled", enabled).apply()
+                        showTab("Aim")
+                    }
+                })
+                if (preferences.getBoolean("aimEnabled", false)) {
+                    slider("fov", "FOV", 20, 300, 110)
+                    slider("smooth", "Suavização", 1, 100, 65)
+                    slider("deadzone", "Deadzone", 0, 50, 8)
+                } else {
+                    title("Desativado — parâmetros ocultos")
+                }
             }
             "Loot" -> {
                 title("Classificação de itens simulados")
