@@ -6,6 +6,9 @@ import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.drawable.GradientDrawable
 import android.os.IBinder
+import android.os.Handler
+import android.os.Looper
+import android.view.View
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.WindowManager
@@ -17,6 +20,25 @@ class FloatingMenuService : Service() {
     private lateinit var root: LinearLayout
     private lateinit var body: LinearLayout
     private var demoView: DemoOverlayView? = null
+    private lateinit var tabs: LinearLayout
+    private lateinit var header: TextView
+    private lateinit var minimizeButton: Button
+    private var minimized = false
+    private var fpsStatus: TextView? = null
+    private val uiHandler = Handler(Looper.getMainLooper())
+    private val fpsUpdater = object : Runnable {
+        override fun run() {
+            fpsStatus?.let { status ->
+                val active = preferences.getBoolean("captureActive", false)
+                val lastUpdate = preferences.getLong("captureUpdated", 0L)
+                val fresh = android.os.SystemClock.elapsedRealtime() - lastUpdate < 3000L
+                status.text = if (!active) "Captura: desligada"
+                    else if (!fresh) "Captura: aguardando quadros..."
+                    else "Captura: ativa • ${preferences.getInt("captureFps", 0)} FPS"
+            }
+            uiHandler.postDelayed(this, 1000L)
+        }
+    }
     private lateinit var params: WindowManager.LayoutParams
     private val preferences by lazy { getSharedPreferences("zyon", MODE_PRIVATE) }
     private val accent = Color.rgb(94, 226, 230)
@@ -36,7 +58,7 @@ class FloatingMenuService : Service() {
                 setStroke(dp(1), accent)
             }
         }
-        val header = TextView(this).apply {
+        header = TextView(this).apply {
             text = "✦ ZYON  ·  PREVIEW  (arraste)"
             textSize = 15f
             setTextColor(accent)
@@ -44,13 +66,19 @@ class FloatingMenuService : Service() {
         }
         val headerRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         headerRow.addView(header, LinearLayout.LayoutParams(0, dp(48), 1f))
+        minimizeButton = Button(this).apply {
+            text = "−"
+            contentDescription = "Minimizar menu flutuante"
+            setOnClickListener { setMinimized(!minimized) }
+        }
+        headerRow.addView(minimizeButton, LinearLayout.LayoutParams(dp(52), dp(48)))
         headerRow.addView(Button(this).apply {
             text = "×"
             contentDescription = "Fechar menu flutuante"
             setOnClickListener { stopSelf() }
         }, LinearLayout.LayoutParams(dp(52), dp(48)))
         root.addView(headerRow)
-        val tabs = LinearLayout(this)
+        tabs = LinearLayout(this)
         root.addView(tabs)
         body = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         root.addView(body)
@@ -92,6 +120,18 @@ class FloatingMenuService : Service() {
         window.addView(root, params)
         if (preferences.getBoolean("demoOverlay", false)) setDemoOverlay(true)
         showTab("ESP")
+        uiHandler.post(fpsUpdater)
+    }
+
+    private fun setMinimized(value: Boolean) {
+        minimized = value
+        tabs.visibility = if (value) View.GONE else View.VISIBLE
+        body.visibility = if (value) View.GONE else View.VISIBLE
+        header.text = if (value) "✦ ZYON" else "✦ ZYON  ·  PREVIEW  (arraste)"
+        minimizeButton.text = if (value) "+" else "−"
+        minimizeButton.contentDescription = if (value) "Expandir menu flutuante" else "Minimizar menu flutuante"
+        params.width = dp(if (value) 185 else 345)
+        window.updateViewLayout(root, params)
     }
 
     private fun setDemoOverlay(enabled: Boolean) {
@@ -159,6 +199,7 @@ class FloatingMenuService : Service() {
 
     private fun showTab(tab: String) {
         body.removeAllViews()
+        fpsStatus = null
         when (tab) {
             "ESP" -> {
                 title("Visualização demonstrativa")
@@ -195,7 +236,15 @@ class FloatingMenuService : Service() {
             }
             "Visual" -> {
                 title("Teste visual sobre outros aplicativos")
-                title(if (preferences.getBoolean("captureActive", false)) "Captura: ativa • ${preferences.getInt("captureFps", 0)} FPS" else "Captura: desligada")
+                fpsStatus = TextView(this).apply {
+                    textSize = 13f
+                    setTextColor(accent)
+                    text = "Captura: verificando..."
+                }
+                body.addView(fpsStatus)
+                fpsStatus?.text = if (preferences.getBoolean("captureActive", false))
+                    "Captura: ativa • ${preferences.getInt("captureFps", 0)} FPS"
+                else "Captura: desligada"
                 title("Dados capturados: somente contagem de quadros")
                 body.addView(Switch(this).apply {
                     text = "Exibir overlay DEMO"
@@ -221,6 +270,8 @@ class FloatingMenuService : Service() {
     }
 
     override fun onDestroy() {
+        uiHandler.removeCallbacks(fpsUpdater)
+        fpsStatus = null
         demoView?.let { window.removeView(it) }
         demoView = null
         if (::root.isInitialized) window.removeView(root)
