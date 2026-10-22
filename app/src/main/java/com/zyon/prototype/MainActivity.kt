@@ -11,6 +11,7 @@ import android.provider.Settings
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.widget.ScrollView
 
 class MainActivity : Activity() {
     private val captureRequest = 504
@@ -34,7 +35,7 @@ class MainActivity : Activity() {
             setBackgroundColor(0xff10141c.toInt())
         }
         root.addView(TextView(this).apply {
-            text = "ZYON • Android v0.5"
+            text = "ZYON • Android v0.7"
             textSize = 24f
             setTextColor(0xff65e1e5.toInt())
         })
@@ -77,6 +78,25 @@ class MainActivity : Activity() {
             textSize = 13f
             setTextColor(-1)
         })
-        setContentView(root)
+        val memoryResult = TextView(this).apply {
+            text = "Memória interna: teste não executado."
+            textSize = 13f
+            setTextColor(0xff65e1e5.toInt())
+            setPadding(0, 10, 0, 20)
+        }
+        root.addView(Button(this).apply {
+            text = "Testar reconhecimento de memória do ZYON"
+            setOnClickListener {
+                memoryResult.text = runCatching { SelfMemoryDiagnostics.inspect().summary() }
+                    .getOrElse { "Falha no diagnóstico local: ${it.javaClass.simpleName}" }
+            }
+        })
+        root.addView(memoryResult)
+        root.addView(TextView(this).apply {
+            text = "Escopo deste teste: apenas o próprio processo ZYON. Nenhuma memória interna do Arena Breakout é lida."
+            textSize = 12f
+            setTextColor(-1)
+        })
+        setContentView(ScrollView(this).apply { addView(root) })
     }
 }
