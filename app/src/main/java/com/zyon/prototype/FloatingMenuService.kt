@@ -1,0 +1,174 @@
+package com.zyon.prototype
+
+import android.app.Service
+import android.content.Intent
+import android.graphics.Color
+import android.graphics.PixelFormat
+import android.graphics.drawable.GradientDrawable
+import android.os.IBinder
+import android.view.Gravity
+import android.view.MotionEvent
+import android.view.WindowManager
+import android.widget.*
+import kotlin.math.roundToInt
+
+class FloatingMenuService : Service() {
+    private lateinit var window: WindowManager
+    private lateinit var root: LinearLayout
+    private lateinit var body: LinearLayout
+    private lateinit var params: WindowManager.LayoutParams
+    private val preferences by lazy { getSharedPreferences("zyon", MODE_PRIVATE) }
+    private val accent = Color.rgb(94, 226, 230)
+
+    override fun onBind(intent: Intent?): IBinder? = null
+    private fun dp(value: Int) = (value * resources.displayMetrics.density).roundToInt()
+
+    override fun onCreate() {
+        super.onCreate()
+        window = getSystemService(WINDOW_SERVICE) as WindowManager
+        root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(12), dp(10), dp(12), dp(12))
+            background = GradientDrawable().apply {
+                setColor(0xee111824.toInt())
+                cornerRadius = dp(16).toFloat()
+                setStroke(dp(1), accent)
+            }
+        }
+        val header = TextView(this).apply {
+            text = "✦ ZYON  ·  PREVIEW  (arraste)"
+            textSize = 15f
+            setTextColor(accent)
+            setPadding(6, 8, 6, 16)
+        }
+        root.addView(header)
+        val tabs = LinearLayout(this)
+        root.addView(tabs)
+        body = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        root.addView(body)
+        listOf("ESP", "Aim", "Loot", "Visual", "Config").forEach { tab ->
+            tabs.addView(Button(this).apply {
+                text = tab
+                textSize = 10f
+                setPadding(0, 0, 0, 0)
+                setOnClickListener { showTab(tab) }
+            }, LinearLayout.LayoutParams(0, dp(48), 1f))
+        }
+        params = WindowManager.LayoutParams(
+            dp(345), WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+            x = dp(12)
+            y = dp(100)
+        }
+        var sx = 0; var sy = 0; var dx = 0f; var dy = 0f
+        header.setOnTouchListener { _, event ->
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    sx = params.x; sy = params.y
+                    dx = event.rawX; dy = event.rawY
+                    true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    params.x = sx + (event.rawX - dx).roundToInt()
+                    params.y = sy + (event.rawY - dy).roundToInt()
+                    window.updateViewLayout(root, params)
+                    true
+                }
+                else -> true
+            }
+        }
+        window.addView(root, params)
+        showTab("ESP")
+    }
+
+    private fun title(label: String) {
+        body.addView(TextView(this).apply {
+            text = label
+            textSize = 13f
+            setTextColor(accent)
+        })
+    }
+
+    private fun toggle(key: String, label: String, initial: Boolean = false) {
+        body.addView(Switch(this).apply {
+            text = label
+            textSize = 13f
+            setTextColor(Color.WHITE)
+            isChecked = preferences.getBoolean(key, initial)
+            setOnCheckedChangeListener { _, checked ->
+                preferences.edit().putBoolean(key, checked).apply()
+            }
+        })
+    }
+
+    private fun slider(key: String, label: String, min: Int, max: Int, initial: Int) {
+        val heading = TextView(this).apply {
+            textSize = 12f
+            setTextColor(Color.WHITE)
+        }
+        body.addView(heading)
+        body.addView(SeekBar(this).apply {
+            this.max = max - min
+            progress = preferences.getInt(key, initial).coerceIn(min, max) - min
+            heading.text = "$label: ${progress + min}"
+            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(seek: SeekBar?, progress: Int, fromUser: Boolean) {
+                    val value = progress + min
+                    heading.text = "$label: $value"
+                    if (fromUser) preferences.edit().putInt(key, value).apply()
+                }
+                override fun onStartTrackingTouch(seek: SeekBar?) {}
+                override fun onStopTrackingTouch(seek: SeekBar?) {}
+            })
+        })
+    }
+
+    private fun showTab(tab: String) {
+        body.removeAllViews()
+        when (tab) {
+            "ESP" -> {
+                title("Visualização demonstrativa")
+                toggle("box", "Caixa 2D", true)
+                toggle("health", "Barra de vida", true)
+                toggle("skeleton", "Skeleton")
+                toggle("distance", "Distância", true)
+                slider("range", "Alcance (m)", 10, 300, 100)
+            }
+            "Aim" -> {
+                title("Parâmetros de simulação")
+                slider("fov", "FOV", 20, 300, 110)
+                slider("smooth", "Suavização", 1, 100, 65)
+                slider("deadzone", "Deadzone", 0, 50, 8)
+            }
+            "Loot" -> {
+                title("Classificação de itens simulados")
+                toggle("lootName", "Mostrar nome", true)
+                toggle("lootValue", "Mostrar Koen", true)
+                slider("minLoot", "Valor mínimo (mil)", 0, 500, 50)
+            }
+            "Visual" -> {
+                slider("opacity", "Opacidade (%)", 30, 100, 93)
+                toggle("fps", "Indicador de FPS")
+            }
+            else -> {
+                body.addView(Button(this).apply {
+                    text = "Restaurar configurações"
+                    setOnClickListener { preferences.edit().clear().apply(); showTab("Config") }
+                })
+                body.addView(Button(this).apply {
+                    text = "Fechar menu"
+                    setOnClickListener { stopSelf() }
+                })
+            }
+        }
+    }
+
+    override fun onDestroy() {
+        if (::root.isInitialized) window.removeView(root)
+        super.onDestroy()
+    }
+}
